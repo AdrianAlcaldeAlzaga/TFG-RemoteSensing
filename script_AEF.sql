@@ -1,0 +1,88 @@
+-- Si ya existe una tabla con el mismo nombre y deseas usar este script:
+-- DROP TABLE IF EXISTS AlphaEarth; 
+
+-- La tabla para almacenar los datos de entrenamiento basados en AlphaEarth
+CREATE TABLE AlphaEarth (
+    -- Clave primaria: Identificador único para cada punto de entrenamiento
+    id_coordenadaAEF SERIAL PRIMARY KEY,
+
+    -- 1. Coordenadas Geográficas (WGS84) para fácil georreferenciación
+    latitud DOUBLE PRECISION NOT NULL, -- Uso DOUBLE PRECISION para la máxima compatibilidad con Python/ML
+    longitud DOUBLE PRECISION NOT NULL,
+
+    -- 2. Etiquetas de Verdad Terreno (Ground Truth) para la Clasificación
+    
+    -- Columna 1: Etiqueta binaria (¿Es vertedero/escombrera? SI/NO)
+    es_residuo BOOLEAN NOT NULL,
+    
+    -- Columna 2: Etiqueta categórica (Clasificación de 3/4 tipos)
+    tipo_residuo VARCHAR(50), 
+
+    -- 3. Las 64 Dimensiones del Embedding de AlphaEarth (A00 a A63)
+    -- Tipo DOUBLE PRECISION es el estándar para datos científicos y de ML (float64 en Python).
+    
+    A00 DOUBLE PRECISION,
+    A01 DOUBLE PRECISION,
+    A02 DOUBLE PRECISION,
+    A03 DOUBLE PRECISION,
+    A04 DOUBLE PRECISION,
+    A05 DOUBLE PRECISION,
+    A06 DOUBLE PRECISION,
+    A07 DOUBLE PRECISION,
+    A08 DOUBLE PRECISION,
+    A09 DOUBLE PRECISION,
+    A10 DOUBLE PRECISION,
+    A11 DOUBLE PRECISION,
+    A12 DOUBLE PRECISION,
+    A13 DOUBLE PRECISION,
+    A14 DOUBLE PRECISION,
+    A15 DOUBLE PRECISION,
+    A16 DOUBLE PRECISION,
+    A17 DOUBLE PRECISION,
+    A18 DOUBLE PRECISION,
+    A19 DOUBLE PRECISION,
+    A20 DOUBLE PRECISION,
+    A21 DOUBLE PRECISION,
+    A22 DOUBLE PRECISION,
+    A23 DOUBLE PRECISION,
+    A24 DOUBLE PRECISION,
+    A25 DOUBLE PRECISION,
+    A26 DOUBLE PRECISION,
+    A27 DOUBLE PRECISION,
+    A28 DOUBLE PRECISION,
+    A29 DOUBLE PRECISION,
+    A30 DOUBLE PRECISION,
+    A31 DOUBLE PRECISION,
+    A32 DOUBLE PRECISION,
+    A33 DOUBLE PRECISION,
+    A34 DOUBLE PRECISION,
+    A35 DOUBLE PRECISION,
+    A36 DOUBLE PRECISION,
+    A37 DOUBLE PRECISION,
+    A38 DOUBLE PRECISION,
+    A39 DOUBLE PRECISION,
+    A40 DOUBLE PRECISION,
+    A41 DOUBLE PRECISION,
+    A42 DOUBLE PRECISION,
+    A43 DOUBLE PRECISION,
+    A44 DOUBLE PRECISION,
+    A45 DOUBLE PRECISION,
+    A46 DOUBLE PRECISION,
+    A47 DOUBLE PRECISION,
+    A48 DOUBLE PRECISION,
+    A49 DOUBLE PRECISION,
+    A50 DOUBLE PRECISION,
+    A51 DOUBLE PRECISION,
+    A52 DOUBLE PRECISION,
+    A53 DOUBLE PRECISION,
+    A54 DOUBLE PRECISION,
+    A55 DOUBLE PRECISION,
+    A56 DOUBLE PRECISION,
+    A57 DOUBLE PRECISION,
+    A58 DOUBLE PRECISION,
+    A59 DOUBLE PRECISION,
+    A60 DOUBLE PRECISION,
+    A61 DOUBLE PRECISION,
+    A62 DOUBLE PRECISION,
+    A63 DOUBLE PRECISION
+);
