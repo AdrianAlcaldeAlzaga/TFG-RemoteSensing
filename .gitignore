@@ -1,0 +1,7 @@
+# Entornos virtuales
+mi_entorno/
+conf/
+
+# Archivos de IDE
+.vscode/
+.idea/

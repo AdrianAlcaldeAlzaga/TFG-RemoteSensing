@@ -1,13 +1,28 @@
 from flask import Flask, json, jsonify, request
 import psycopg2 
+import os
+from dotenv import load_dotenv
 import ee
 
 app = Flask(__name__)
 
+dotenv_path = 'conf/key.env'
+load_dotenv(dotenv_path=dotenv_path)
+credentials_path = os.getenv('PC_PATH_GEE_CREDENTIALS')
+
 # --- 1. INICIALIZAR EARTH ENGINE ---
 try:
-    ee.Initialize()
-    print("Earth Engine inicializado correctamente.")
+    # Verificar que el archivo de credenciales existe y es accesible
+    if credentials_path and os.path.exists(credentials_path):
+        service_account = 'tfg-remoterensing-aaa@proyecto-de-prueba-471508.iam.gserviceaccount.com'
+        credentials = ee.ServiceAccountCredentials(service_account, credentials_path)
+        ee.Initialize(credentials)
+        print("Earth Engine inicializado correctamente.")
+    else:
+        print("Error: No se encontró el archivo de credenciales.")
+        print("Intentando inicialización por defecto...")
+        ee.Initialize()
+        print("Earth Engine inicializado con credenciales por defecto.")
 except Exception as e:
     print(f"Error al inicializar Earth Engine: {e}")
 
@@ -32,10 +47,9 @@ def get_db_connection():
         print(f"Error al conectar con la base de datos: {e}")
         return None
     
-def extract_embedding(lat, lon):
+def extract_embedding(lat, lon, year):
     """Función de ejemplo para extraer un embedding basado en latitud y longitud."""
     try:
-        year = 2024 # Año fijo para este ejemplo
         # Crear punto
         punto = ee.Geometry.Point([lon, lat])
         
@@ -64,18 +78,58 @@ def extract_embedding(lat, lon):
             "punto": {"lat": lat, "lon": lon}
         }
     
-def search_point_bbdd(cursor, lat, lon, tolerancia=0.0001):
+def search_point_bbdd(cursor, lat, lon, year, tolerancia=0.0001):
     try:
-        """Busca si existe un punto similar en la base de datos."""
-        query = """
-            SELECT id_coordenadaAEF, latitud, longitud, es_residuo, tipo_residuo
+        """Busca si existe un punto similar en la base de datos y devuelve todos los campos."""
+        # Crear las columnas A00 a A63
+        columnas_embeddings = [f"A{i:02d}" for i in range(0, 64)]
+        
+        # Crear la query con todas las columnas
+        columnas_str = ", ".join(["id_coordenadaAEF", "latitud", "longitud", "anio", "es_residuo", "tipo_residuo"] + columnas_embeddings)
+        
+        query = f"""
+            SELECT {columnas_str}
             FROM AlphaEarth
             WHERE latitud BETWEEN %s AND %s
             AND longitud BETWEEN %s AND %s
+            AND anio = %s
+            AND A00 IS NOT NULL
             LIMIT 1;
         """
-        cursor.execute(query, (lat - tolerancia, lat + tolerancia, lon - tolerancia, lon + tolerancia))
-        return cursor.fetchone()
+        
+        print(f"Buscando punto con tolerancia: lat={lat}±{tolerancia}, lon={lon}±{tolerancia}, año={year}")
+        cursor.execute(query, (lat - tolerancia, lat + tolerancia, lon - tolerancia, lon + tolerancia, year))
+        
+        resultado = cursor.fetchone()
+        
+        if resultado:
+            print(f"Punto encontrado en BBDD para año {year}")
+            # Crear diccionario con todos los campos
+            columnas_completas = ["id_coordenadaAEF", "latitud", "longitud", "anio", "es_residuo", "tipo_residuo"] + columnas_embeddings
+            punto_dict = dict(zip(columnas_completas, resultado))
+            
+            # Crear sub-diccionario para embeddings
+            embeddings_dict = {}
+            for col in columnas_embeddings:
+                if punto_dict[col] is not None:
+                    embeddings_dict[col] = punto_dict[col]
+            
+            # Estructura final del registro
+            punto_completo = {
+                "id_coordenadaAEF": punto_dict["id_coordenadaAEF"],
+                "latitud": punto_dict["latitud"],
+                "longitud": punto_dict["longitud"],
+                "anio": punto_dict["anio"],
+                "es_residuo": punto_dict["es_residuo"],
+                "tipo_residuo": punto_dict["tipo_residuo"],
+                "embeddings": embeddings_dict
+            }
+            
+            return punto_completo
+        else:
+            print(f"No se encontró punto en BBDD para año {year}")
+            return None
+            
     except psycopg2.Error as db_error:
         print(f"Error de PostgreSQL en search_point_bbdd: {db_error}")
         print(f"Código de error: {db_error.pgcode}")
@@ -85,17 +139,15 @@ def search_point_bbdd(cursor, lat, lon, tolerancia=0.0001):
         print(f"Error general en search_point_bbdd: {type(e).__name__}: {e}")
         return None
 
-
-
-def save_point_bbdd(cursor, lat, lon, embeddings_data):
+def save_point_bbdd(cursor, lat, lon, year, embeddings_data):
     """Guarda un nuevo punto con embeddings en la base de datos."""
     try:
         # Obtener los embeddings
         embeddings = embeddings_data['embeddings']
-        
-        # Crear las columnas A01 a A63
-        columnas_embeddings = [f"A{i:02d}" for i in range(1, 64)]  # A01, A02, ..., A63
-        
+
+        # Crear las columnas A00 a A63
+        columnas_embeddings = [f"A{i:02d}" for i in range(0, 64)]  # A00, A01, ..., A63
+
         # Crear la lista de valores para los embeddings
         valores_embeddings = []
         for col in columnas_embeddings:
@@ -104,9 +156,9 @@ def save_point_bbdd(cursor, lat, lon, embeddings_data):
             valores_embeddings.append(valor)
         
         # Crear la query dinámicamente
-        columnas_str = ", ".join(["latitud", "longitud", "es_residuo", "tipo_residuo"] + columnas_embeddings)
-        placeholders = ", ".join(["%s"] * (4 + len(columnas_embeddings)))
-        
+        columnas_str = ", ".join(["latitud", "longitud", "anio", "es_residuo", "tipo_residuo"] + columnas_embeddings)
+        placeholders = ", ".join(["%s"] * (5 + len(columnas_embeddings)))
+
         query = f"""
             INSERT INTO AlphaEarth ({columnas_str})
             VALUES ({placeholders})
@@ -114,7 +166,7 @@ def save_point_bbdd(cursor, lat, lon, embeddings_data):
         """
         
         # Combinar todos los valores
-        valores = [lat, lon, False, 'unknown'] + valores_embeddings
+        valores = [lat, lon, year, False, 'unknown'] + valores_embeddings
         
         print(f"Insertando punto con {len(valores_embeddings)} valores de embeddings")
         print(f"Primeros 5 embeddings: {valores_embeddings[:5]}")
@@ -137,10 +189,6 @@ def save_point_bbdd(cursor, lat, lon, embeddings_data):
 # --- 3. RUTA DE PRUEBA: OBTENER TODOS LOS DATOS ---
 @app.route('/api/alphaearth/points', methods=['GET'])
 def get_points_embedding():
-    # Establecemos las credenciales con gee
-    service_account = 'tfg-remoterensing-aaa@proyecto-de-prueba-471508.iam.gserviceaccount.com'
-    credentials = ee.ServiceAccountCredentials(service_account,  srvconf['PYSRV_GEE_CONFIG_FILE'])
-    ee.Initialize(credentials)
 
     conn = get_db_connection()
     if conn is None:
@@ -149,42 +197,75 @@ def get_points_embedding():
     try:
         cursor = conn.cursor()
         
-        # Obtener parámetros de la URL (no JSON)
+        # Obtener parámetros de la URL
         lat = request.args.get('lat', type=float)
         lon = request.args.get('lon', type=float)
+        user = request.args.get('user', default='anonymous', type=str)
+        year = request.args.get('year', default=2024, type=int)
         
-        print(f"Buscando punto lat={lat}, lon={lon} en BBDD...")
-        punto_existente = search_point_bbdd(cursor, lat, lon)
+        # Validar parámetros requeridos
+        if lat is None or lon is None:
+            return jsonify({"error": "Se requieren parámetros 'lat' y 'lon'"}), 400
+        
+        print(f"Buscando punto lat={lat}, lon={lon}, año={year} en BBDD...")
+        punto_existente = search_point_bbdd(cursor, lat, lon, year)
 
         if punto_existente:
             print("Punto encontrado en BBDD, devolviendo datos existentes.")
+            return jsonify({
+                "user": user,
+                "data": punto_existente, 
+                "total_registros_devueltos": 1,
+                "origen": "base_de_datos"
+            })
         else:
             print("Punto no encontrado en BBDD, extrayendo embeddings y guardando nuevo punto.")
-            embeddings_data = extract_embedding(lat, lon)
+            
+            # Limpiar cualquier transacción abortada
+            conn.rollback()
+            
+            embeddings_data = extract_embedding(lat, lon, year)
             if embeddings_data['status'] == 'success':
-                nuevo_id = save_point_bbdd(cursor, lat, lon, embeddings_data)
+                nuevo_id = save_point_bbdd(cursor, lat, lon, year, embeddings_data)
                 if nuevo_id:
-                    conn.commit()  # Confirmar cambios en la base de datos
+                    conn.commit()  # Confirmar cambios
+                    
+                    # Crear el punto_existente con los datos recién guardados
+                    punto_existente = {
+                        "id_coordenadaAEF": nuevo_id,
+                        "latitud": lat,
+                        "longitud": lon,
+                        "anio": year,  # AGREGAR año
+                        "es_residuo": False,
+                        "tipo_residuo": "unknown",
+                        "embeddings": embeddings_data['embeddings']
+                    }
+                    
+                    return jsonify({
+                        "user": user,
+                        "data": punto_existente, 
+                        "total_registros_devueltos": 1,
+                        "origen": "earth_engine"
+                    })
                 else:
-                    return jsonify({"error_guardar": "No se pudo guardar el nuevo punto."}), 500
+                    conn.rollback()
+                    return jsonify({"error": "No se pudo guardar el nuevo punto"}), 500
             else:
-                return jsonify({"error_embeddings": embeddings_data['error']}), 500
-        # Obtiene todos los resultados
-        resultados = cursor.fetchall()
-        
-        # Obtiene los nombres de las columnas para crear un diccionario (mejor formato JSON)
-        columnas = [desc[0] for desc in cursor.description]
-        
-        # Convierte la lista de tuplas a una lista de diccionarios
-        puntos = [dict(zip(columnas, fila)) for fila in resultados]
-
-        return jsonify({"data": puntos, "total_registros_devueltos": len(puntos)})
+                return jsonify({"error": "No se pudieron extraer embeddings", "detalles": embeddings_data}), 500
 
     except psycopg2.Error as e:
+        print(f"Error PostgreSQL: {e}")
+        if conn:
+            conn.rollback()
         return jsonify({"error_query": str(e)}), 500
     
+    except Exception as e:
+        print(f"Error general: {e}")
+        if conn:
+            conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    
     finally:
-        # CIERRA la conexión siempre, incluso si hay un error
         if conn:
             conn.close()
 

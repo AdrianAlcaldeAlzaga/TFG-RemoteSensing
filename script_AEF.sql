@@ -1,3 +1,4 @@
+
 -- Si ya existe una tabla con el mismo nombre y deseas usar este script:
 -- DROP TABLE IF EXISTS AlphaEarth; 
 
@@ -7,8 +8,10 @@ CREATE TABLE AlphaEarth (
     id_coordenadaAEF SERIAL PRIMARY KEY,
 
     -- 1. Coordenadas Geográficas (WGS84) para fácil georreferenciación
-    latitud DOUBLE PRECISION NOT NULL, -- Uso DOUBLE PRECISION para la máxima compatibilidad con Python/ML
+    latitud DOUBLE PRECISION NOT NULL, 
     longitud DOUBLE PRECISION NOT NULL,
+	anio INTEGER NOT NULL,
+	
 
     -- 2. Etiquetas de Verdad Terreno (Ground Truth) para la Clasificación
     
