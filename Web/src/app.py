@@ -1,16 +1,41 @@
-from flask import Flask, json, jsonify, request
-import psycopg2 
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
+from flask_login import LoginManager, login_user, logout_user, login_required
+from flask_wtf.csrf import CSRFProtect
+from config import config
+from database import Database, get_db, close_db
 import os
 from dotenv import load_dotenv
 import ee
 
+# Models
+from models.ModelUser import ModelUser
+
+# Entities
+from models.entities.User import User
+
 app = Flask(__name__)
+
+# Configurar CSRF para proteger formularios
+csrf = CSRFProtect(app)
+
+# Cargar configuración PRIMERO
+app.config.from_object(config['development'])
+
+# Inicializar pool de conexiones
+Database.initialize(app)
+
+# Registrar función para cerrar conexión al final de cada request
+app.teardown_appcontext(close_db)
+
+# Configurar Flask-Login
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
 
 dotenv_path = 'conf/key.env'
 load_dotenv(dotenv_path=dotenv_path)
 credentials_path = os.getenv('PC_PATH_GEE_CREDENTIALS')
 
-# --- 1. INICIALIZAR EARTH ENGINE ---
+# --- INICIALIZAR EARTH ENGINE ---
 try:
     # Verificar que el archivo de credenciales existe y es accesible
     if credentials_path and os.path.exists(credentials_path):
@@ -26,29 +51,62 @@ try:
 except Exception as e:
     print(f"Error al inicializar Earth Engine: {e}")
 
-# --- 2. DATOS DE CONEXIÓN A POSTGRESQL ---
-DB_CONFIG = {
-    "host": "localhost",
-    "database": "tfg_remotesensing_aaa",
-    "user": "postgres",
-    "password": "tfgs2"
-}
+@login_manager.user_loader
+def load_user(id):
+    """Carga el usuario dado su ID."""
+    db = get_db()
+    if db:
+        return ModelUser.get_by_id(db, id)
+    return None
 
-# --- 3. FUNCIÓN DE CONEXIÓN REUTILIZABLE ---
-def get_db_connection():
-    """Establece y devuelve una conexión a la base de datos."""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        # En caso correcto, mostramos un mensaje en consola
-        print("Conexión a la base de datos establecida.")
-        return conn
-    except psycopg2.Error as e:
-        # En caso de error, es mejor registrarlo y devolver None
-        print(f"Error al conectar con la base de datos: {e}")
-        return None
+# --- RUTAS DE AUTENTICACIÓN ---
+@app.route('/')
+def index():
+    """Página de inicio que redirige al login."""
+    return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Maneja el login de usuarios."""
+    if request.method == 'POST':
+        user = User(0, username=request.form['username'], password=request.form['password'])
+        logged_user = ModelUser().login(get_db(), user)
+        if logged_user != None:
+            if logged_user.password:
+                login_user(logged_user)
+                flash("Login successful", "success")
+                return redirect(url_for('home'))
+            else:
+                flash("Incorrect password", "danger")
+        else:
+            flash("Invalid username", "danger")
+        # Aquí iría la lógica de autenticación
+        return render_template('auth/login.html', message="Login successful")
+    else:
+        return render_template('auth/login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Cierra la sesión del usuario."""
+    logout_user()
+    return redirect(url_for('login'))
+
+def status_401(error):
+    """Maneja el error 401 - No autorizado."""
+    return redirect(url_for('login'))
+    
+def status_404(error):
+    """Maneja el error 404 - No encontrado."""
+    return "<h1>404 - Not Found</h1>", 404
+
+@app.route('/home')
+def home():
+    """Página de inicio al logearse."""
+    return render_template('home.html')
     
 def extract_embedding(lat, lon, year):
-    """Función de ejemplo para extraer un embedding basado en latitud y longitud."""
+    """Función para extraer un embedding basado en latitud y longitud."""
     try:
         # Crear punto
         punto = ee.Geometry.Point([lon, lat])
@@ -129,14 +187,8 @@ def search_point_bbdd(cursor, lat, lon, year, tolerancia=0.0001):
         else:
             print(f"No se encontró punto en BBDD para año {year}")
             return None
-            
-    except psycopg2.Error as db_error:
-        print(f"Error de PostgreSQL en search_point_bbdd: {db_error}")
-        print(f"Código de error: {db_error.pgcode}")
-        print(f"Detalles del error: {db_error.pgerror}")
-        return None
     except Exception as e:
-        print(f"Error general en search_point_bbdd: {type(e).__name__}: {e}")
+        print(f"Error en search_point_bbdd: {type(e).__name__}: {e}")
         return None
 
 def save_point_bbdd(cursor, lat, lon, year, embeddings_data):
@@ -146,12 +198,11 @@ def save_point_bbdd(cursor, lat, lon, year, embeddings_data):
         embeddings = embeddings_data['embeddings']
 
         # Crear las columnas A00 a A63
-        columnas_embeddings = [f"A{i:02d}" for i in range(0, 64)]  # A00, A01, ..., A63
+        columnas_embeddings = [f"A{i:02d}" for i in range(0, 64)]
 
         # Crear la lista de valores para los embeddings
         valores_embeddings = []
         for col in columnas_embeddings:
-            # Si existe el embedding para esa columna, lo usa; sino pone None
             valor = embeddings.get(col, None)
             valores_embeddings.append(valor)
         
@@ -168,7 +219,7 @@ def save_point_bbdd(cursor, lat, lon, year, embeddings_data):
         # Combinar todos los valores
         valores = [lat, lon, year, False, 'unknown'] + valores_embeddings
         
-        print(f"Insertando punto con {len(valores_embeddings)} valores de embeddings")
+        print(f"Insertando punto con {len(valores_embeddings)} valores de embeddings para año {year}")
         print(f"Primeros 5 embeddings: {valores_embeddings[:5]}")
         
         cursor.execute(query, valores)
@@ -176,26 +227,23 @@ def save_point_bbdd(cursor, lat, lon, year, embeddings_data):
         
         print(f"Punto guardado en BBDD con ID: {nuevo_id}")
         return nuevo_id
-        
-    except psycopg2.Error as db_error:
-        print(f"Error de PostgreSQL en save_point_bbdd: {db_error}")
-        print(f"Código de error: {db_error.pgcode}")
-        print(f"Detalles del error: {db_error.pgerror}")
-        return None
     except Exception as e:
         print(f"Error al guardar punto en BBDD: {e}")
         return None
 
-# --- 3. RUTA DE PRUEBA: OBTENER TODOS LOS DATOS ---
+# --- 4. RUTA PARA OBTENER EMBEDDINGS ---
 @app.route('/api/alphaearth/points', methods=['GET'])
 def get_points_embedding():
-
-    conn = get_db_connection()
-    if conn is None:
+    """
+    Obtiene embeddings de un punto geográfico.
+    Si existe en BBDD lo devuelve, sino lo extrae de Earth Engine y lo guarda.
+    """
+    db = get_db()
+    if db is None:
         return jsonify({"error": "No se pudo conectar a la base de datos."}), 500
 
     try:
-        cursor = conn.cursor()
+        cursor = db.cursor()
         
         # Obtener parámetros de la URL
         lat = request.args.get('lat', type=float)
@@ -220,22 +268,20 @@ def get_points_embedding():
             })
         else:
             print("Punto no encontrado en BBDD, extrayendo embeddings y guardando nuevo punto.")
-            
-            # Limpiar cualquier transacción abortada
-            conn.rollback()
+            db.rollback()
             
             embeddings_data = extract_embedding(lat, lon, year)
             if embeddings_data['status'] == 'success':
                 nuevo_id = save_point_bbdd(cursor, lat, lon, year, embeddings_data)
                 if nuevo_id:
-                    conn.commit()  # Confirmar cambios
+                    db.commit()
                     
                     # Crear el punto_existente con los datos recién guardados
                     punto_existente = {
                         "id_coordenadaAEF": nuevo_id,
                         "latitud": lat,
                         "longitud": lon,
-                        "anio": year,  # AGREGAR año
+                        "anio": year,
                         "es_residuo": False,
                         "tipo_residuo": "unknown",
                         "embeddings": embeddings_data['embeddings']
@@ -248,27 +294,27 @@ def get_points_embedding():
                         "origen": "earth_engine"
                     })
                 else:
-                    conn.rollback()
+                    db.rollback()
                     return jsonify({"error": "No se pudo guardar el nuevo punto"}), 500
             else:
                 return jsonify({"error": "No se pudieron extraer embeddings", "detalles": embeddings_data}), 500
 
-    except psycopg2.Error as e:
-        print(f"Error PostgreSQL: {e}")
-        if conn:
-            conn.rollback()
-        return jsonify({"error_query": str(e)}), 500
-    
     except Exception as e:
         print(f"Error general: {e}")
-        if conn:
-            conn.rollback()
+        db.rollback()
         return jsonify({"error": str(e)}), 500
     
     finally:
-        if conn:
-            conn.close()
+        if cursor:
+            cursor.close()
 
-# --- 4. INICIO DEL SERVIDOR ---
+# --- 5. INICIO DEL SERVIDOR ---
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    try:
+        csrf.init_app(app)
+        app.register_error_handler(401, status_401)
+        app.register_error_handler(404, status_404)
+        app.run()
+    finally:
+        # Cerrar pool de conexiones al terminar
+        Database.close_all_connections()
