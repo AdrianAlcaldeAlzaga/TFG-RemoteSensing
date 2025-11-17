@@ -214,8 +214,88 @@ def extract_bands_sentinel2(lat, lon, year):
             "error": str(e),
             "punto": {"lat": lat, "lon": lon, "year": year}
         }
+    
+def search_alphaearth_and_save(cursor, db, lat, lon, year, es_residuo, tipo_residuo, user):
+    print("Punto AEF no encontrado en BBDD, extrayendo embeddings de Earth Engine...")
+    db.rollback()
+    
+    embeddings_data = extract_embedding(lat, lon, year)
+    
+    if embeddings_data['status'] == 'success':
+        nuevo_id = save_point_bbdd_aef(cursor, year, es_residuo, tipo_residuo, embeddings_data)
+        
+        if nuevo_id:
+            db.commit()
+            print(f"Punto AEF guardado exitosamente con ID: {nuevo_id}")
+            
+            # Crear estructura de datos
+            punto_existente_aef = {
+                "id_coordenadaAEF": nuevo_id,
+                "latitud": lat,
+                "longitud": lon,
+                "anio": year,
+                "es_residuo": es_residuo,
+                "tipo_residuo": tipo_residuo,
+                "embeddings": embeddings_data['embeddings']
+            }
+        else:
+            # ❌ ERROR: No se pudo guardar AlphaEarth en BD
+            db.rollback()
+            return jsonify({
+                "status": "failed",
+                "error": "No se pudo guardar el punto AlphaEarth en la base de datos"
+            }), 500
+    else:
+        # ❌ ERROR: No se pudieron extraer embeddings
+        return jsonify({
+            "status": "failed",
+            "error": "No se pudieron extraer embeddings de Earth Engine",
+            "detalles": embeddings_data
+        }), 500
+    
+    return punto_existente_aef
 
-def search_point_bbdd_aef(cursor, lat, lon, year, tolerancia=0.000001):
+def search_sentinel2_and_save(cursor, db, lat, lon, year, es_residuo, tipo_residuo, user):
+    print("Punto S2 no encontrado en BBDD, extrayendo bandas de Sentinel-2...")
+    db.rollback()
+
+    bands_data = extract_bands_sentinel2(lat, lon, year)
+    
+    if bands_data['status'] == 'success':
+        nuevo_id_s2 = save_point_sentinel2(cursor, es_residuo, tipo_residuo, bands_data)
+        
+        if nuevo_id_s2:
+            db.commit()
+            print(f"Punto S2 guardado exitosamente con ID: {nuevo_id_s2}")
+            
+            # Crear estructura de datos
+            punto_existente_s2 = {
+                "id_coordenadaAEF": nuevo_id_s2,
+                "latitud": lat,
+                "longitud": lon,
+                "fecha": bands_data['fecha_imagen'],
+                "es_residuo": es_residuo,
+                "tipo_residuo": tipo_residuo,
+                "bandas": bands_data['bandas']
+            }
+        else:
+            # ❌ ERROR: No se pudo guardar Sentinel-2 en BD
+            db.rollback()
+            return jsonify({
+                "status": "failed",
+                "error": "No se pudo guardar el punto Sentinel-2 en la base de datos"
+            }), 500
+    else:
+        # ❌ ERROR: No se pudieron extraer bandas
+        return jsonify({
+            "status": "failed",
+            "error": "No se pudieron extraer bandas de Sentinel-2 de Earth Engine",
+            "detalles": bands_data
+        }), 500
+    
+    return punto_existente_s2
+
+def search_point_bbdd_aef(cursor, lat, lon, year, es_residuo, tipo_residuo, tolerancia=0.000001):
     try:
         """Busca si existe un punto similar en la base de datos y devuelve todos los campos."""
         # Crear las columnas A00 a A63
@@ -230,12 +310,14 @@ def search_point_bbdd_aef(cursor, lat, lon, year, tolerancia=0.000001):
             WHERE latitud BETWEEN %s AND %s
             AND longitud BETWEEN %s AND %s
             AND anio = %s
+            AND es_residuo = %s
+            AND tipo_residuo = %s
             AND A00 IS NOT NULL
             LIMIT 1;
         """
         
         print(f"Buscando punto con tolerancia: lat={lat}±{tolerancia}, lon={lon}±{tolerancia}, año={year}")
-        cursor.execute(query, (lat - tolerancia, lat + tolerancia, lon - tolerancia, lon + tolerancia, year))
+        cursor.execute(query, (lat - tolerancia, lat + tolerancia, lon - tolerancia, lon + tolerancia, year, es_residuo, tipo_residuo))
         
         resultado = cursor.fetchone()
         
@@ -270,7 +352,7 @@ def search_point_bbdd_aef(cursor, lat, lon, year, tolerancia=0.000001):
         print(f"Error en search_point_bbdd: {type(e).__name__}: {e}")
         return None
 
-def search_point_sentinel2(cursor, lat, lon, year, tolerancia=0.000001):
+def search_point_sentinel2(cursor, lat, lon, year, es_residuo, tipo_residuo, tolerancia=0.000001):
     """Busca si existe un punto similar en Sentinel-2 y devuelve todos los campos."""
     try:
         # Crear las columnas para las bandas Sentinel-2
@@ -287,12 +369,14 @@ def search_point_sentinel2(cursor, lat, lon, year, tolerancia=0.000001):
             WHERE latitud BETWEEN %s AND %s
             AND longitud BETWEEN %s AND %s
             AND EXTRACT(YEAR FROM fecha) = %s
+            AND es_residuo = %s
+            AND tipo_residuo = %s
             AND B01 IS NOT NULL
             LIMIT 1;
         """
         
         print(f"Buscando punto Sentinel-2 con tolerancia: lat={lat}±{tolerancia}, lon={lon}±{tolerancia}, año={year}")
-        cursor.execute(query, (lat - tolerancia, lat + tolerancia, lon - tolerancia, lon + tolerancia, year))
+        cursor.execute(query, (lat - tolerancia, lat + tolerancia, lon - tolerancia, lon + tolerancia, year, es_residuo, tipo_residuo))
         
         resultado = cursor.fetchone()
         
@@ -328,11 +412,13 @@ def search_point_sentinel2(cursor, lat, lon, year, tolerancia=0.000001):
         print(f"Error en search_point_sentinel2: {type(e).__name__}: {e}")
         return None
 
-def save_point_bbdd_aef(cursor, lat, lon, year, embeddings_data):
+def save_point_bbdd_aef(cursor, year, es_residuo, tipo_residuo, embeddings_data):
     """Guarda un nuevo punto con embeddings en la base de datos."""
     try:
         # Obtener los embeddings
         embeddings = embeddings_data['embeddings']
+        lat = embeddings_data['punto']['lat']
+        lon = embeddings_data['punto']['lon']
 
         # Crear las columnas A00 a A63
         columnas_embeddings = [f"A{i:02d}" for i in range(0, 64)]
@@ -354,7 +440,7 @@ def save_point_bbdd_aef(cursor, lat, lon, year, embeddings_data):
         """
         
         # Combinar todos los valores
-        valores = [lat, lon, year, False, 'unknown'] + valores_embeddings
+        valores = [lat, lon, year, es_residuo, tipo_residuo] + valores_embeddings
         
         print(f"Insertando punto con {len(valores_embeddings)} valores de embeddings para año {year}")
         print(f"Primeros 5 embeddings: {valores_embeddings[:5]}")
@@ -368,14 +454,15 @@ def save_point_bbdd_aef(cursor, lat, lon, year, embeddings_data):
         print(f"Error al guardar punto en BBDD: {e}")
         return None
     
-def save_point_sentinel2(cursor, bands_data):
+def save_point_sentinel2(cursor, es_residuo, tipo_residuo, bands_data):
     """Guarda un nuevo punto con bandas Sentinel-2 en la base de datos."""
     try:
         # Obtener los datos
         bandas = bands_data['bandas']
         lat = bands_data['punto']['lat']
         lon = bands_data['punto']['lon']
-        fecha = bands_data['fecha_imagen']
+        fecha_imagen = bands_data['fecha_imagen']
+
         # Crear las columnas para las bandas Sentinel-2
         columnas_bandas = ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B11", "B12"]
 
@@ -396,9 +483,9 @@ def save_point_sentinel2(cursor, bands_data):
         """
         
         # Combinar todos los valores
-        valores = [lat, lon, fecha, False, 'unknown'] + valores_bandas
+        valores = [lat, lon, fecha_imagen, es_residuo, tipo_residuo] + valores_bandas
 
-        print(f"Insertando punto Sentinel-2 con {len(valores_bandas)} valores de bandas para fecha {fecha}")
+        print(f"Insertando punto Sentinel-2 con {len(valores_bandas)} valores de bandas para la fecha {fecha_imagen}")
         print(f"Primeras 5 bandas: {valores_bandas[:5]}")
         
         cursor.execute(query, valores)
@@ -409,110 +496,96 @@ def save_point_sentinel2(cursor, bands_data):
     except Exception as e:
         print(f"Error al guardar punto Sentinel-2 en BBDD: {e}")
         return None
+    
+def obtener_parametros(request):
+    """ Obtiene y valida los parámetros de la URL."""
+    # 1. OBTENER Y VALIDAR PARÁMETROS DE LA URL
+    lat = request.args.get('lat', type=float)
+    lon = request.args.get('lon', type=float)
+    user = request.args.get('user', default='anonymous', type=str)
+    year = request.args.get('year', default=2024, type=int)
+    tipo_residuo = request.args.get('residuo', default='Ninguno', type=str)
+    es_residuo = False if tipo_residuo.lower() == 'ninguno' else True
+
+    # Validar parámetros requeridos
+    if lat is None or lon is None:
+        # ❌ ERROR: Faltan parámetros obligatorios
+        return jsonify({
+            "status": "failed",
+            "error": "Se requieren parámetros 'lat' y 'lon'"
+        }), 400
+    
+    return lat, lon, user, year, es_residuo, tipo_residuo
 
 # --- 4. RUTA PARA OBTENER EMBEDDINGS ---
 @app.route('/api/alphaearth/points', methods=['GET'])
 def get_points_embedding():
     """
-    Obtiene embeddings de un punto geográfico.
+    Obtiene embeddings de AlphaEarth y bandas de Sentinel-2 para un punto geográfico.
     Si existe en BBDD lo devuelve, sino lo extrae de Earth Engine y lo guarda.
+    
+    Returns:
+        JSON con status "success" o "failed" y los datos correspondientes
     """
     db = get_db()
     if db is None:
-        return jsonify({"error": "No se pudo conectar a la base de datos."}), 500
+        # ❌ ERROR: No hay conexión a la base de datos
+        return jsonify({
+            "status": "failed",
+            "error": "No se pudo conectar a la base de datos."
+        }), 500
 
     try:
         cursor = db.cursor()
         
-        # Obtener parámetros de la URL
-        lat = request.args.get('lat', type=float)
-        lon = request.args.get('lon', type=float)
-        user = request.args.get('user', default='anonymous', type=str)
-        year = request.args.get('year', default=2024, type=int)
+        # 1. OBTENER PARÁMETROS DE LA URL
+        lat, lon, user, year, es_residuo, tipo_residuo = obtener_parametros(request)
+
         
-        # Validar parámetros requeridos
-        if lat is None or lon is None:
-            return jsonify({"error": "Se requieren parámetros 'lat' y 'lon'"}), 400
-        
+        # 2. BUSCAR DATOS EXISTENTES EN BASE DE DATOS
         print(f"Buscando punto lat={lat}, lon={lon}, año={year} en BBDD...")
-        punto_existente_aef = search_point_bbdd_aef(cursor, lat, lon, year)
-        punto_existente_s2 = search_point_sentinel2(cursor, lat, lon, year)  # Placeholder para futura implementación
+        punto_existente_aef = search_point_bbdd_aef(cursor, lat, lon, year, es_residuo, tipo_residuo)
+        punto_existente_s2 = search_point_sentinel2(cursor, lat, lon, year, es_residuo, tipo_residuo)
 
+        # 3. SI AMBOS EXISTEN EN BD, DEVOLVER INMEDIATAMENTE
         if punto_existente_aef and punto_existente_s2:
-            print("Punto encontrado en BBDD, devolviendo datos existentes.")
+            print("Ambos puntos encontrados en BBDD, devolviendo datos existentes.")
+            # ✅ SUCCESS: Datos encontrados en BD
             return jsonify({
+                "status": "success",
                 "user": user,
                 "data_aef": punto_existente_aef, 
-                "data_s2": punto_existente_s2,
-                "total_registros_devueltos": 1,
-                "origen_aef": "base_de_datos",
-                "origen_s2": "base_de_datos"
-            })
-        if punto_existente_aef == None:
-            origen_aef = "earth_engine"
-            print("Punto AEF no encontrado en BBDD, extrayendo embeddings y guardando nuevo punto.")
-            db.rollback()
-            
-            embeddings_data = extract_embedding(lat, lon, year)
-            if embeddings_data['status'] == 'success':
-                nuevo_id = save_point_bbdd_aef(cursor, lat, lon, year, embeddings_data)
-                if nuevo_id:
-                    db.commit()
-                    
-                    # Crear el punto_existente_aef con los datos recién guardados
-                    punto_existente_aef = {
-                        "id_coordenadaAEF": nuevo_id,
-                        "latitud": lat,
-                        "longitud": lon,
-                        "anio": year,
-                        "es_residuo": False,
-                        "tipo_residuo": "unknown",
-                        "embeddings": embeddings_data['embeddings']
-                    }
-                else:
-                    db.rollback()
-                    return jsonify({"error": "No se pudo guardar el nuevo punto"}), 500
-            else:
-                return jsonify({"error": "No se pudieron extraer embeddings", "detalles": embeddings_data}), 500
-        if punto_existente_s2 == None:
-            origen_s2 = "earth_engine"
-            print("Punto S2 no encontrado en BBDD, extrayendo datos de Sentinel-2.")
-            db.rollback()
+                "data_s2": punto_existente_s2
+            }), 200
 
-            bands_data = extract_bands_sentinel2(lat, lon, year)  # Placeholder para futura implementación
-            if bands_data['status'] == 'success':
-                nuevo_id_s2 = save_point_sentinel2(cursor, bands_data)  # Placeholder para futura implementación
-                if nuevo_id_s2:
-                    db.commit()
-                    # Crear el punto_existente_s2 con los datos recién guardados
-                    punto_existente_s2 = {
-                        "id_coordenadaAEF": nuevo_id_s2,
-                        "latitud": lat,
-                        "longitud": lon,
-                        "fecha": bands_data['fecha_imagen'],
-                        "es_residuo": False,
-                        "tipo_residuo": "unknown",
-                        "bandas": bands_data['bandas']
-                    }
-                else:
-                    db.rollback()
-                    return jsonify({"error": "No se pudo guardar el nuevo punto Sentinel-2"}), 500
+        # 4. SI NO EXISTE AlphaEarth, EXTRAER Y GUARDAR
+        if punto_existente_aef is None:
+            punto_existente_aef = search_alphaearth_and_save(cursor, db, lat, lon, year, es_residuo, tipo_residuo, user)
+
+        # 5. SI NO EXISTE Sentinel-2, EXTRAER Y GUARDAR
+        if punto_existente_s2 is None:
+            punto_existente_s2 = search_sentinel2_and_save(cursor, db, lat, lon, year, es_residuo, tipo_residuo, user)
+
+        # 6. DEVOLVER RESPUESTA EXITOSA FINAL
+        # ✅ SUCCESS: Datos obtenidos (ya sea de BD o Earth Engine)
         return jsonify({
-                "user": user,
-                "data_aef": punto_existente_aef, 
-                "data_s2": punto_existente_s2,
-                "total_registros_devueltos": 1,
-                "origen_aef": origen_aef if punto_existente_aef else "base_de_datos",
-                "origen_s2": origen_s2 if punto_existente_s2 else "base_de_datos"
-            })
-
+            "status": "success",
+            "user": user,
+            "data_aef": punto_existente_aef, 
+            "data_s2": punto_existente_s2
+        }), 200
 
     except Exception as e:
-        print(f"Error general: {e}")
+        # ❌ ERROR: Excepción general no manejada
+        print(f"Error general en get_points_embedding: {e}")
         db.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "status": "failed",
+            "error": f"Error interno del servidor: {str(e)}"
+        }), 500
     
     finally:
+        # Siempre cerrar el cursor
         if cursor:
             cursor.close()
 

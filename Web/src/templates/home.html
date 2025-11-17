@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block body %}
-<div class="container mt-5">
+<div class="container-fluid mt-5">
     <!-- Encabezado con información del usuario -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -24,239 +24,223 @@
         </div>
     </div>
 
-    <!-- Formulario estilizado -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">
-                <i class="bi bi-geo-alt-fill"></i> Introducir Coordenadas
-            </h5>
+    <!-- Layout de dos columnas: Formulario (izquierda) + Mapa (derecha) -->
+    <div class="row">
+        <!-- COLUMNA IZQUIERDA: Formulario y Resultados -->
+        <div class="col-md-6">
+            <!-- Formulario estilizado -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-geo-alt-fill"></i> Introducir Coordenadas
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="coordForm">
+                        <!-- Latitud -->
+                        <div class="mb-3">
+                            <label for="lat" class="form-label fw-bold">
+                                <i class="bi bi-compass"></i> Latitud
+                            </label>
+                            <input 
+                                type="number" 
+                                class="form-control form-control-lg" 
+                                id="lat" 
+                                name="lat" 
+                                step="0.00001" 
+                                min="-90" 
+                                max="90"
+                                placeholder="Ej: 40.41677"
+                                required>
+                            <div class="form-text">Rango: -90° a 90°</div>
+                        </div>
+                        
+                        <!-- Longitud -->
+                        <div class="mb-3">
+                            <label for="lon" class="form-label fw-bold">
+                                <i class="bi bi-compass"></i> Longitud
+                            </label>
+                            <input
+                                type="number"  
+                                class="form-control form-control-lg" 
+                                id="lon" 
+                                name="lon" 
+                                step="0.00001" 
+                                min="-180" 
+                                max="180"
+                                placeholder="Ej: -3.70379"
+                                required>
+                            <div class="form-text">Rango: -180° a 180°</div>
+                        </div>
+
+                        <!-- Año -->
+                        <div class="mb-4">
+                            <label for="year" class="form-label fw-bold">
+                                <i class="bi bi-calendar-event"></i> Año
+                            </label>
+                            <input 
+                                type="number" 
+                                class="form-control form-control-lg" 
+                                id="year" 
+                                name="year" 
+                                min="2017" 
+                                max="2024"
+                                value="2024"
+                                placeholder="2024">
+                            <div class="form-text">Rango: 2017 a 2024</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="residuo" class="form-label fw-bold">
+                                <i class="bi bi-database"></i> Tipo de Residuo
+                            </label>
+                            <select 
+                                class="form-select form-select-lg" 
+                                id="residuo" 
+                                name="residuo"
+                                required>
+                                <option value="" selected disabled>Selecciona un tipo de residuo</option>
+                                <option value="Ninguno">Ninguno</option>
+                                <option value="Escombros">Escombros</option>
+                                <option value="Colchones">Colchones</option>
+                                <option value="Neumáticos">Neumáticos</option>
+                            </select>
+                            <div class="form-text">Selecciona el tipo de residuo que deseas consultar</div>
+                        </div>
+
+                        <!-- Botón de búsqueda -->
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-search"></i> Buscar Embeddings
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Área de resultados -->
+            <div id="resultado"></div>
         </div>
-        <div class="card-body">
-            <form id="coordForm">
-                <div class="row g-3">
-                    <!-- Latitud -->
-                    <div class="col-md-4">
-                        <label for="lat" class="form-label fw-bold">
-                            <i class="bi bi-compass"></i> Latitud
-                        </label>
-                        <input 
-                            type="number" 
-                            class="form-control form-control-lg" 
-                            id="lat" 
-                            name="lat" 
-                            step="0.000001" 
-                            min="-90" 
-                            max="90"
-                            placeholder="Ej: 40.416775"
-                            required>
-                        <div class="form-text">Rango: -90° a 90°</div>
-                    </div>
-                    
-                    <!-- Longitud -->
-                    <div class="col-md-4">
-                        <label for="lon" class="form-label fw-bold">
-                            <i class="bi bi-compass"></i> Longitud
-                        </label>
-                        <input 
-                            type="number" 
-                            class="form-control form-control-lg" 
-                            id="lon" 
-                            name="lon" 
-                            step="0.000001" 
-                            min="-180" 
-                            max="180"
-                            placeholder="Ej: -3.703790"
-                            required>
-                        <div class="form-text">Rango: -180° a 180°</div>
-                    </div>
 
-                    <!-- Año -->
-                    <div class="col-md-4">
-                        <label for="year" class="form-label fw-bold">
-                            <i class="bi bi-calendar-event"></i> Año
-                        </label>
-                        <input 
-                            type="number" 
-                            class="form-control form-control-lg" 
-                            id="year" 
-                            name="year" 
-                            min="2017" 
-                            max="2024"
-                            value="2024"
-                            placeholder="2024">
-                        <div class="form-text">Rango: 2017 a 2024</div>
-                    </div>
-                </div>
-
-                <!-- Botón de búsqueda -->
-                <div class="row mt-4">
-                    <div class="col-12">
-                        <button type="submit" class="btn btn-primary btn-lg w-100">
-                            <i class="bi bi-search"></i> Buscar Embeddings
-                        </button>
-                    </div>
-                </div>
-            </form>
+        <!-- COLUMNA DERECHA: Mapa (futuro) -->
+        <div class="col-md-6">
+            {% include 'components/mapa.html' %}
         </div>
     </div>
-
-    <!-- Área de resultados -->
-    <div id="resultado"></div>
 </div>
+{% endblock %}
+
+{% block customJS %}
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- JavaScript del mapa -->
+<script src="{{ url_for('static', filename='js/mapa.js') }}"></script>
+<!-- JavaScript de validaciones -->
+<script src="{{ url_for('static', filename='js/validaciones.js') }}"></script>
 
 <script>
-// Función para establecer coordenadas de ejemplo
-function setCoords(lat, lon) {
-    document.getElementById('lat').value = lat;
-    document.getElementById('lon').value = lon;
-}
+    // Limitar decimales en latitud y longitud en tiempo real
+    document.addEventListener('DOMContentLoaded', function() {
+        const lat = document.getElementById('lat');
+        const lon = document.getElementById('lon');
 
-document.getElementById('coordForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    debugger;
-    const lat = document.getElementById('lat').value;
-    console.log("Latitud:", lat);
-    const lon = document.getElementById('lon').value;
-    const user = "{{ current_user.username }}";
-    const year = document.getElementById('year').value || 2024;
+        lat.addEventListener('input', function(e) {
+            limitarDecimales(e.target, 5);
+        });
+        lon.addEventListener('input', function(e) {
+            limitarDecimales(e.target, 5);
+        });
+    });
 
-    // Mostrar "Cargando..." con spinner
-    document.getElementById('resultado').innerHTML = `
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
-                <span class="visually-hidden">Cargando...</span>
-            </div>
-            <p class="mt-3 text-muted">Obteniendo datos de Earth Engine...</p>
-        </div>
-    `;
-
-    // Hacer la petición GET a la API
-    fetch(`/api/alphaearth/points?lat=${lat}&lon=${lon}&user=${user}&year=${year}`)
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Error en la petición: ' + response.status);
+    // Función para limitar decimales
+    function limitarDecimales(input, maxDecimales) {
+        let valor = input.value;
+        if (valor.includes('.')) {
+            const partes = valor.split('.');
+            if (partes[1].length > maxDecimales) {
+                partes[1] = partes[1].slice(0, maxDecimales);
+                input.value = partes.join('.');
+            }
         }
-        return response.json();
-    })
-    .then(data => {
-        mostrarResultados(data);
-    })
-    .catch(error => {
+    }
+
+    // Manejar el envío del formulario
+    document.getElementById('coordForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const lat = document.getElementById('lat').value;
+        const lon = document.getElementById('lon').value;
+        const user = "{{ current_user.username }}";
+        const year = document.getElementById('year').value || 2024;
+        const residuo = document.getElementById('residuo').value || 'Ninguno';
+
+        // Mostrar "Cargando..." con spinner
         document.getElementById('resultado').innerHTML = `
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <h5 class="alert-heading">
-                    <i class="bi bi-exclamation-triangle-fill"></i> Error
-                </h5>
-                <p><strong>No se pudieron obtener los datos:</strong> ${error.message}</p>
-                <hr>
-                <p class="mb-0">Por favor, verifica las coordenadas e intenta nuevamente.</p>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                <p class="mt-3 text-muted">Obteniendo datos de Earth Engine...</p>
             </div>
         `;
+
+        // Hacer la petición GET a la API
+        fetch(`/api/alphaearth/points?lat=${lat}&lon=${lon}&user=${user}&year=${year}&residuo=${residuo}`)
+        .then(response => response.json())
+        .then(data => {
+            
+            // ✅ Verificar el status
+            if (data.status === 'success') {
+                mostrarResultados(data);
+            } else if (data.status === 'failed') {
+                document.getElementById('resultado').innerHTML = `
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill"></i> 
+                        <strong>Error:</strong> ${data.error}
+                        ${data.detalles ? `<hr><small><pre>${JSON.stringify(data.detalles, null, 2)}</pre></small>` : ''}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            document.getElementById('resultado').innerHTML = `
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <strong>Error de conexión:</strong> ${error.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+        });
     });
-});
 
-function mostrarResultados(data) {
-    debugger;
-    // Extraer datos de AlphaEarth  
-    const embeddings = data.data_aef.embeddings;
-    const embeddingsKeys = Object.keys(embeddings);
-    
-    // Extraer datos de Sentinel-2
-    const bandas = data.data_s2.bandas;
-    const bandasKeys = Object.keys(bandas);
-    
-    const html = `
-        <!-- Tabla AlphaEarth Embeddings -->
-        <div class="card shadow-sm mb-4">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0">
-                    <i class="bi"></i> AlphaEarth - Embeddings
-                </h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-container">
-                    <table class="table table-striped table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Latitud</th>
-                                <th>Longitud</th>
-                                <th>Año</th>
-                                <th>Es Residuo</th>
-                                <th>Tipo Residuo</th>
-                                <th>Origen</th>
-                                ${embeddingsKeys.map(key => `<th>${key}</th>`).join('')}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>${data.data_aef.latitud}</td>
-                                <td>${data.data_aef.longitud}</td>
-                                <td>${data.data_aef.anio}</td>
-                                <td>${data.data_aef.es_residuo ? 'Sí' : 'No'}</td>
-                                <td>${data.data_aef.tipo_residuo}</td>
-                                <td><span class="badge bg-${data.origen_aef === 'base_de_datos' ? 'info' : 'warning'}">${data.origen_aef}</span></td>
-                                ${embeddingsKeys.map(key => `<td>${embeddings[key].toFixed(6)}</td>`).join('')}
-                            </tr>
-                        </tbody>
-                    </table>
+    // Función para mostrar resultados
+    function mostrarResultados(data) {
+        // Verificar el status
+        if (data.status === 'success') {
+            // ✅ Mostrar mensaje de éxito simple
+            const html = `
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="bi bi-check-circle-fill"></i> 
+                    <strong>Datos guardados con éxito</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
-            </div>
-            <div class="card-footer text-muted">
-                <small>
-                    <i class="bi bi-info-circle"></i> 
-                    Total de embeddings: <strong>${embeddingsKeys.length}</strong> | 
-                    Usuario: <strong>${data.user}</strong>
-                </small>
-            </div>
-        </div>
-
-        <!-- Tabla Sentinel-2 Bandas -->
-        <div class="card shadow-sm">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0">
-                    <i class="bi"></i> Sentinel-2 - Bandas Espectrales
-                </h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-container">
-                    <table class="table table-striped table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Latitud</th>
-                                <th>Longitud</th>
-                                <th>Fecha</th>
-                                <th>Es Residuo</th>
-                                <th>Tipo Residuo</th>
-                                <th>Origen</th>
-                                ${bandasKeys.map(key => `<th>${key}</th>`).join('')}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>${data.data_s2.latitud}</td>
-                                <td>${data.data_s2.longitud}</td>
-                                <td>${data.data_s2.fecha}</td>
-                                <td>${data.data_s2.es_residuo ? 'Sí' : 'No'}</td>
-                                <td>${data.data_s2.tipo_residuo}</td>
-                                <td><span class="badge bg-${data.origen_s2 === 'base_de_datos' ? 'info' : 'warning'}">${data.origen_s2}</span></td>
-                                ${bandasKeys.map(key => `<td>${bandas[key].toFixed(2)}</td>`).join('')}
-                            </tr>
-                        </tbody>
-                    </table>
+            `;
+            
+            document.getElementById('resultado').innerHTML = html;
+            console.log('✅ Mensaje de éxito mostrado');
+            
+        } else if (data.status === 'failed') {
+            // ❌ Mostrar mensaje de error
+            const html = `
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill"></i> 
+                    <strong>Error:</strong> ${data.error}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
-            </div>
-            <div class="card-footer text-muted">
-                <small>
-                    <i class="bi bi-info-circle"></i> 
-                    Total de bandas: <strong>${bandasKeys.length}</strong> | 
-                    Resolución: <strong>10m</strong>
-                </small>
-            </div>
-        </div>
-    `;
-    
-    document.getElementById('resultado').innerHTML = html;
-}
+            `;
+            
+            document.getElementById('resultado').innerHTML = html;
+        }
+    }
 </script>
 {% endblock %}
