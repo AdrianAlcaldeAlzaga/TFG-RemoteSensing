@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/mapa.css') }}">
+
+    <title>Mapa de residuos </title>
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">
+            <i class="bi bi-map"></i> Mapa de Ubicación
+        </h5>
+    </div>
+    <select name="select-location" id="select-location">
+        <option value="40.4168,-3.7038">Residuo 1</option>
+        <option value="41.3851,2.1734">Residuo 2</option>
+        <option value="37.3891,-5.9845">Residuo 3</option>
+    </select>
+</head>
+<body>
+    
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+</body>
+</html>
